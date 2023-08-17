@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -18,6 +19,35 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
+
+type S3AttributesFileInfo struct {
+	name string
+	*s3.GetObjectAttributesOutput
+}
+
+func (obj *S3AttributesFileInfo) Name() string {
+	return obj.name
+}
+
+func (obj *S3AttributesFileInfo) Size() int64 {
+	return *obj.ObjectSize
+}
+
+func (obj *S3AttributesFileInfo) Mode() os.FileMode {
+	return os.ModeIrregular
+}
+
+func (obj *S3AttributesFileInfo) ModTime() time.Time {
+	return *obj.LastModified
+}
+
+func (obj *S3AttributesFileInfo) IsDir() bool {
+	return false
+}
+
+func (obj *S3AttributesFileInfo) Sys() interface{} {
+	return nil
+}
 
 type S3FileInfo struct {
 	s3 *s3.Object
@@ -69,6 +99,23 @@ func (s3fs *S3FS) ResourceName() string {
 	return s3fs.config.S3Bucket
 }
 
+func (s3fs *S3FS) GetObjectInfo(path PathConfig) (fs.FileInfo, error) {
+	s3Path := strings.TrimPrefix(path.Path, "/")
+	s3client := s3.New(s3fs.session)
+	params := &s3.GetObjectAttributesInput{
+		Bucket: aws.String(s3fs.config.S3Bucket),
+		Key:    aws.String(s3Path),
+		ObjectAttributes: []*string{
+			aws.String("ETag"),
+			aws.String("ObjectSize"),
+			aws.String("LastModified"),
+		},
+	}
+	resp, err := s3client.GetObjectAttributes(params)
+	return &S3AttributesFileInfo{s3Path, resp}, err
+}
+
+// @TODO should this return an error on failure to list?  Think so!
 func (s3fs *S3FS) GetDir(path PathConfig) (*[]FileStoreResultObject, error) {
 	s3Path := strings.TrimPrefix(path.Path, "/")
 	s3client := s3.New(s3fs.session)
@@ -364,7 +411,7 @@ func (s3fs *S3FS) Walk(path string, vistorFunction FileVisitFunction) error {
 }
 
 /*
-  these functions are not part of the filestore interface and are unique to the S3FS
+these functions are not part of the filestore interface and are unique to the S3FS
 */
 func (s3fs *S3FS) GetPresignedUrl(path PathConfig, days int) (string, error) {
 	s3Path := strings.TrimPrefix(path.Path, "/")

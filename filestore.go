@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"strings"
@@ -74,10 +75,11 @@ type UploadResult struct {
 
 type FileVisitFunction func(path string, file os.FileInfo) error
 
-//@TODO evaluate PathConfig as an input.  should this just be a string path.....
+// @TODO evaluate PathConfig as an input.  should this just be a string path.....
 type FileStore interface {
 	GetDir(path PathConfig) (*[]FileStoreResultObject, error)
 	GetObject(PathConfig) (io.ReadCloser, error)
+	GetObjectInfo(PathConfig) (fs.FileInfo, error)
 	PutObject(PathConfig, []byte) (*FileOperationOutput, error)
 	//Writer(PathConfig) (io.Writer, error)
 	CopyObject(source PathConfig, dest PathConfig) error
@@ -138,7 +140,7 @@ func sanitizePath(path string) string {
 	return strings.ReplaceAll(path, "..", "")
 }
 
-//@TODO this is duplicated!!!!
+// @TODO this is duplicated!!!!
 func buildUrl(urlparts []string, pathType PATHTYPE) string {
 	var b strings.Builder
 	t := "/%s"

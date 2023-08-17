@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -13,14 +14,21 @@ import (
 	"github.com/google/uuid"
 )
 
-//@TODO this is kind of clunky.  BlockFSConfig is only used in NewFileStore as a type case so we know to create a Block File Store
-//as of now I don't actually need any config properties
+// @TODO this is kind of clunky.  BlockFSConfig is only used in NewFileStore as a type case so we know to create a Block File Store
+// as of now I don't actually need any config properties
 type BlockFSConfig struct{}
 
 type BlockFS struct{}
 
+func (b *BlockFS) GetObjectInfo(path PathConfig) (fs.FileInfo, error) {
+	file, err := os.Open(path.Path)
+	if err != nil {
+		return nil, err
+	}
+	return file.Stat()
+}
+
 func (b *BlockFS) GetDir(path PathConfig) (*[]FileStoreResultObject, error) {
-	fmt.Println(path.Path)
 	dirContents, err := ioutil.ReadDir(path.Path)
 	if err != nil {
 		return nil, err
