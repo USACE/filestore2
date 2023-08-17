@@ -38,7 +38,7 @@ func (obj *S3AttributesFileInfo) Mode() os.FileMode {
 }
 
 func (obj *S3AttributesFileInfo) ModTime() time.Time {
-	return *obj.LastModified
+	return time.Now()
 }
 
 func (obj *S3AttributesFileInfo) IsDir() bool {
@@ -108,7 +108,6 @@ func (s3fs *S3FS) GetObjectInfo(path PathConfig) (fs.FileInfo, error) {
 		ObjectAttributes: []*string{
 			aws.String("ETag"),
 			aws.String("ObjectSize"),
-			aws.String("LastModified"),
 		},
 	}
 	resp, err := s3client.GetObjectAttributes(params)
@@ -141,10 +140,10 @@ func (s3fs *S3FS) GetDir(path PathConfig) (*[]FileStoreResultObject, error) {
 		}
 		prefixes = append(prefixes, resp.CommonPrefixes...)
 		objects = append(objects, resp.Contents...)
-		if resp.ContinuationToken != nil {
-			continuationToken = resp.ContinuationToken
-		} else {
+		if resp.ContinuationToken == nil {
 			shouldContinue = false
+		} else {
+			continuationToken = resp.ContinuationToken
 		}
 	}
 
