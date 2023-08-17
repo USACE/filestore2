@@ -119,22 +119,38 @@ func (s3fs *S3FS) GetObjectInfo(path PathConfig) (fs.FileInfo, error) {
 func (s3fs *S3FS) GetDir(path PathConfig) (*[]FileStoreResultObject, error) {
 	s3Path := strings.TrimPrefix(path.Path, "/")
 	s3client := s3.New(s3fs.session)
-	params := &s3.ListObjectsV2Input{
-		Bucket:            aws.String(s3fs.config.S3Bucket),
-		Prefix:            &s3Path,
-		Delimiter:         &s3fs.delimiter,
-		MaxKeys:           &s3fs.maxKeys,
-		ContinuationToken: nil,
-	}
 
-	resp, err := s3client.ListObjectsV2(params)
-	if err != nil {
-		log.Printf("failed to list objects in the bucket - %v", err)
+	shouldContinue := true
+	var continuationToken *string = nil
+	prefixes := []*s3.CommonPrefix{}
+	objects := []*s3.Object{}
+
+	for shouldContinue {
+		params := &s3.ListObjectsV2Input{
+			Bucket:            aws.String(s3fs.config.S3Bucket),
+			Prefix:            &s3Path,
+			Delimiter:         &s3fs.delimiter,
+			MaxKeys:           &s3fs.maxKeys,
+			ContinuationToken: continuationToken,
+		}
+
+		resp, err := s3client.ListObjectsV2(params)
+		if err != nil {
+			log.Printf("failed to list objects in the bucket - %v", err)
+			return nil, err
+		}
+		prefixes = append(prefixes, resp.CommonPrefixes...)
+		objects = append(objects, resp.Contents...)
+		if resp.ContinuationToken != nil {
+			continuationToken = resp.ContinuationToken
+		} else {
+			shouldContinue = false
+		}
 	}
 
 	result := []FileStoreResultObject{}
 	var count int = 0
-	for _, cp := range resp.CommonPrefixes {
+	for _, cp := range prefixes {
 		w := FileStoreResultObject{
 			ID:         count,
 			Name:       filepath.Base(*cp.Prefix),
@@ -148,7 +164,7 @@ func (s3fs *S3FS) GetDir(path PathConfig) (*[]FileStoreResultObject, error) {
 		result = append(result, w)
 	}
 
-	for _, object := range resp.Contents {
+	for _, object := range objects {
 		w := FileStoreResultObject{
 			ID:         count,
 			Name:       filepath.Base(*object.Key),
