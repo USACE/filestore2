@@ -149,7 +149,7 @@ func (b *BlockFS) WriteChunk(u UploadConfig) (UploadResult, error) {
 		return result, err
 	}
 	defer f.Close()
-	_, err = f.WriteAt(u.Data, (u.ChunkId * chunkSize))
+	_, err = f.WriteAt(u.Data, (int64(u.ChunkId) * chunkSize))
 	result.WriteSize = len(u.Data)
 	return result, err
 }

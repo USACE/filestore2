@@ -1,6 +1,7 @@
 package filestore
 
 import (
+	"context"
 	"crypto/md5"
 	"errors"
 	"fmt"
@@ -11,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 type PATHTYPE int
@@ -21,6 +22,11 @@ type PATHTYPE int
 const (
 	FILE PATHTYPE = iota
 	FOLDER
+)
+
+const (
+	DEFAULTMAXKEYS   int32  = 1000
+	DEFAULTDELIMITER string = "/"
 )
 
 var chunkSize int64 = 10 * 1024 * 1024
@@ -51,7 +57,7 @@ type UploadConfig struct {
 	//FilePath   string
 	ObjectPath string
 	//ObjectName string
-	ChunkId int64
+	ChunkId int32
 	//FileId     uuid.UUID
 	UploadId string
 	Data     []byte
@@ -74,6 +80,7 @@ type UploadResult struct {
 }
 
 type FileVisitFunction func(path string, file os.FileInfo) error
+type FileWalkCompleteFunction func() error
 
 // @TODO evaluate PathConfig as an input.  should this just be a string path.....
 type FileStore interface {
@@ -94,26 +101,77 @@ type FileStore interface {
 	Walk(string, FileVisitFunction) error
 }
 
-func NewFileStore(config interface{}) (FileStore, error) {
-	switch scType := config.(type) {
+func NewFileStore(fsconfig interface{}) (FileStore, error) {
+	switch scType := fsconfig.(type) {
 	case BlockFSConfig:
 		fs := BlockFS{}
 		return &fs, nil
 
+	/*
+		case S3FSRole:
+			sess := session.Must(session.NewSession())
+			// Create the credentials from AssumeRoleProvider to assume the role referenced by the "myRoleARN" ARN.
+			creds := stscreds.NewCredentials(sess, scType.ARN)
+			sess.Config = &aws.Config{Credentials: creds}
+			// Create service client value configured for credentials
+			// from assumed role.
+			//svc := s3.New(sess, &aws.Config{Credentials: creds})
+			fs := S3FS{
+				session:   sess,
+				role:      &scType,
+				delimiter: "/",
+				maxKeys:   1000,
+			}
+			return &fs, nil
+	*/
+
+	/*
+		case S3FSConfig:
+			if scType.S3Id == "" {
+				cfg, err := external.LoadDefaultAWSConfig()
+			}
+			creds := credentials.NewStaticCredentials(scType.S3Id, scType.S3Key, "")
+			cfg := aws.NewConfig().WithRegion(scType.S3Region).WithCredentials(creds)
+			sess, err := session.NewSession(cfg)
+			if err != nil {
+				return nil, err
+			}
+
+			fs := S3FS{
+				session:   sess,
+				config:    &scType,
+				delimiter: "/",
+				maxKeys:   1000,
+			}
+			return &fs, nil
+	*/
+
 	case S3FSConfig:
-		s3config := config.(S3FSConfig)
-		creds := credentials.NewStaticCredentials(s3config.S3Id, s3config.S3Key, "")
-		cfg := aws.NewConfig().WithRegion(s3config.S3Region).WithCredentials(creds)
-		sess, err := session.NewSession(cfg)
+		maxKeys := DEFAULTMAXKEYS
+		if scType.MaxKeys > 0 {
+			maxKeys = scType.MaxKeys
+		}
+		delimiter := DEFAULTDELIMITER
+		if scType.Delimiter != "" {
+			delimiter = scType.Delimiter
+		}
+		cfg, err := config.LoadDefaultConfig(
+			context.TODO(),
+			config.WithRegion(scType.S3Region),
+			config.WithCredentialsProvider(
+				credentials.NewStaticCredentialsProvider(scType.S3Id, scType.S3Key, ""),
+			),
+		)
 		if err != nil {
 			return nil, err
 		}
 
+		s3Client := s3.NewFromConfig(cfg)
 		fs := S3FS{
-			session:   sess,
-			config:    &s3config,
-			delimiter: "/",
-			maxKeys:   1000,
+			s3client:  s3Client,
+			config:    &scType,
+			delimiter: delimiter,
+			maxKeys:   maxKeys,
 		}
 		return &fs, nil
 
