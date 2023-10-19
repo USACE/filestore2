@@ -19,6 +19,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
+const max_copy_chunk_size = 5 * 1024 * 1024
+const max_put_object_copy_size = 5000 * 1024 * 1024
+
 type S3AttributesFileInfo struct {
 	name string
 	*s3.GetObjectAttributesOutput
@@ -76,23 +79,30 @@ func (obj *S3FileInfo) Sys() interface{} {
 	return nil
 }
 
-type S3FSRole struct {
+type S3FS_Role struct {
 	ARN string
 }
 
+type S3FS_Attached struct {
+	Profile string
+}
+
+type S3FS_Static struct {
+	S3Id  string
+	S3Key string
+}
+
 type S3FSConfig struct {
-	S3Id      string
-	S3Key     string
-	S3Region  string
-	S3Bucket  string
-	Delimiter string
-	MaxKeys   int32
+	S3Region    string
+	S3Bucket    string
+	Delimiter   string
+	MaxKeys     int32
+	Credentials any
 }
 
 type S3FS struct {
 	s3client                 *s3.Client
 	config                   *S3FSConfig
-	role                     *S3FSRole
 	delimiter                string
 	maxKeys                  int32
 	ignoreContinuationOnWalk bool //internal use only
@@ -247,18 +257,6 @@ func (s3fs *S3FS) PutObject(path PathConfig, data []byte) (*FileOperationOutput,
 	return output, err
 }
 
-func (s3fs *S3FS) CopyObject(sourcePath PathConfig, destPath PathConfig) error {
-	source := strings.TrimPrefix(sourcePath.Path, "/")
-	dest := strings.TrimPrefix(destPath.Path, "/")
-	input := s3.CopyObjectInput{
-		Bucket:     &s3fs.config.S3Bucket,
-		CopySource: &source,
-		Key:        &dest,
-	}
-	_, err := s3fs.s3client.CopyObject(context.TODO(), &input)
-	return err
-}
-
 func (s3fs *S3FS) DeleteObject(path string) error {
 	s3Path := strings.TrimPrefix(path, "/")
 	input := &s3.DeleteObjectsInput{
@@ -353,18 +351,126 @@ func (s3fs *S3FS) flushDeletes(delBuffer []types.ObjectIdentifier) error {
 	return err
 }
 
-/*
-result, err := basics.S3Client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
-		Bucket: aws.String(bucketName),
-	})
-	var contents []types.Object
+func (s3fs *S3FS) CopyObject(sourcePath PathConfig, destPath PathConfig) error {
+
+	info, err := s3fs.GetObjectInfo(sourcePath)
 	if err != nil {
-		log.Printf("Couldn't list objects in bucket %v. Here's why: %v\n", bucketName, err)
-	} else {
-		contents = result.Contents
+		return err
 	}
-	return contents, err
-*/
+
+	var fileSize int64 = info.Size()
+	if fileSize < max_put_object_copy_size {
+		source := strings.TrimPrefix(sourcePath.Path, "/")
+		dest := strings.TrimPrefix(destPath.Path, "/")
+		input := s3.CopyObjectInput{
+			Bucket:     &s3fs.config.S3Bucket,
+			CopySource: &source,
+			Key:        &dest,
+		}
+		_, err = s3fs.s3client.CopyObject(context.TODO(), &input)
+	} else {
+		s3fs.copyPartsTo(sourcePath, destPath, fileSize)
+	}
+	return err
+}
+
+func (s3fs *S3FS) copyPartsTo(sourcePath PathConfig, destPath PathConfig, fileSize int64) error {
+	source := strings.TrimPrefix(sourcePath.Path, "/")
+	dest := strings.TrimPrefix(destPath.Path, "/")
+
+	/*
+		ctx, cancelFn := context.WithTimeout(context.TODO(), 10*time.Minute)
+		defer cancelFn()
+	*/
+	//struct for starting a multipart upload
+	destInput := s3.CreateMultipartUploadInput{
+		Bucket: &s3fs.config.S3Bucket,
+		Key:    &dest,
+	}
+	var uploadId string
+	createOutput, err := s3fs.s3client.CreateMultipartUpload(context.TODO(), &destInput)
+	if err != nil {
+		return err
+	}
+	if createOutput != nil {
+		if createOutput.UploadId != nil {
+			uploadId = *createOutput.UploadId
+		}
+	}
+	if uploadId == "" {
+		return errors.New("No upload id found in start upload request")
+	}
+
+	var i int64
+	var partNumber int32 = 1
+	copySource := fmt.Sprintf("%s/%s", s3fs.config.S3Bucket, source)
+
+	parts := make([]types.CompletedPart, 0)
+	numUploads := fileSize / max_copy_chunk_size
+	log.Printf("Will attempt upload in %d number of parts to %s", numUploads, dest)
+
+	for i = 0; i < fileSize; i += max_copy_chunk_size {
+		copyRange := buildCopySourceRange(i, fileSize)
+		partInput := s3.UploadPartCopyInput{
+			Bucket:          &s3fs.config.S3Bucket,
+			CopySource:      &copySource,
+			CopySourceRange: &copyRange,
+			Key:             &dest,
+			PartNumber:      partNumber,
+			UploadId:        &uploadId,
+		}
+
+		partResp, err := s3fs.s3client.UploadPartCopy(context.TODO(), &partInput)
+
+		if err != nil {
+			log.Println("Attempting to abort upload")
+			abortIn := s3.AbortMultipartUploadInput{
+				UploadId: &uploadId,
+			}
+			//ignoring any errors with aborting the copy
+			s3fs.s3client.AbortMultipartUpload(context.TODO(), &abortIn)
+			return fmt.Errorf("Error uploading part %d : %w", partNumber, err)
+		}
+
+		//copy etag and part number from response as it is needed for completion
+		if partResp != nil {
+			partNum := partNumber
+			etag := strings.Trim(*partResp.CopyPartResult.ETag, "\"")
+			cPart := types.CompletedPart{
+				ETag:       &etag,
+				PartNumber: partNum,
+			}
+			parts = append(parts, cPart)
+			log.Printf("Successfully upload part %d of %s\n", partNumber, uploadId)
+		}
+		partNumber++
+		if partNumber%50 == 0 {
+			log.Printf("Completed part %d of %d to %s\n", partNumber, numUploads, dest)
+		}
+	}
+	//create struct for completing the upload
+	mpu := types.CompletedMultipartUpload{
+		Parts: parts,
+	}
+
+	//complete actual upload
+	//does not actually copy if the complete command is not received
+	complete := s3.CompleteMultipartUploadInput{
+		Bucket:          &s3fs.config.S3Bucket,
+		Key:             &dest,
+		UploadId:        &uploadId,
+		MultipartUpload: &mpu,
+	}
+	compOutput, err := s3fs.s3client.CompleteMultipartUpload(context.TODO(), &complete)
+	if err != nil {
+		return fmt.Errorf("Error completing upload: %w", err)
+	}
+	if compOutput != nil {
+		log.Println("Finished copy")
+	}
+	return nil
+
+}
 
 func (s3fs *S3FS) InitializeObjectUpload(u UploadConfig) (UploadResult, error) {
 	output := UploadResult{}
@@ -500,4 +606,14 @@ func (s3fs *S3FS) SetObjectPublic(path PathConfig) (string, error) {
 	url := fmt.Sprintf("https://%s.s3.amazonaws.com/%s", s3fs.config.S3Bucket, s3Path)
 	log.Println(url)
 	return url, err
+}
+
+func buildCopySourceRange(start int64, objectSize int64) string {
+	end := start + max_copy_chunk_size - 1
+	if end > objectSize {
+		end = objectSize - 1
+	}
+	startRange := strconv.FormatInt(start, 10)
+	stopRange := strconv.FormatInt(end, 10)
+	return "bytes=" + startRange + "-" + stopRange
 }

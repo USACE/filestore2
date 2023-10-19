@@ -1,0 +1,62 @@
+
+v2-----------------------
+	GetDir(path PathConfig) (*[]FileStoreResultObject, error)
+	GetObject(PathConfig) (io.ReadCloser, error)
+	GetObjectInfo(PathConfig) (fs.FileInfo, error)
+	PutObject(PathConfig, []byte) (*FileOperationOutput, error)
+	//Writer(PathConfig) (io.Writer, error)
+	CopyObject(source PathConfig, dest PathConfig) error
+	ResourceName() string
+	Upload(reader io.Reader, key string) error
+	UploadFile(filepth string, key string) error
+	InitializeObjectUpload(UploadConfig) (UploadResult, error)
+	WriteChunk(UploadConfig) (UploadResult, error)
+	CompleteObjectUpload(CompletedObjectUploadConfig) error
+	DeleteObject(path string) error //depricate eventually?
+	DeleteObjects(path PathConfig) error
+	Walk(string, FileVisitFunction) error
+--------------------------
+
+
+v3------------------------
+	GetDir(path PathConfig) (*[]FileStoreResultObject, error)
+	GetObjectInfo(PathConfig) (fs.FileInfo, error)
+	GetObject(PathConfig) (io.ReadCloser, error)	
+	ResourceName() string
+	InitializeObjectUpload(MultipartUploadConfig) (UploadResult, error)
+	WriteChunk(MultipartUploadConfig) (UploadResult, error)
+	CompleteObjectUpload(CompletedObjectUploadConfig) error
+	DeleteObjects(path PathConfig, pf ProgressFunction) error
+	Walk(string, FileVisitFunction) error
+
+        PutObject(input PutObjectInput) (*FileOperationOutput, error)
+	CopyObject(input CopyObjectInput) error
+
+
+type PutObjectInput struct{
+	source ObjectSource
+	dest PathConfig
+}
+
+type ObjectSource struct{
+	Reader io.Reader
+	Data *[]byte
+	Filepath PathConfig
+}
+
+func (os *ObjectSource) Reader() error
+
+type CopyObjectInput struct{
+	src PathConfig
+	dest PathConfig
+	pf ProgressFunction
+}
+
+
+zip and unzip?
+resume download?
+ - start download session
+ - store each chunk info
+ - send chunks
+   - file sysem byte slice
+   - s3 ranged read

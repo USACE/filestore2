@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -81,6 +82,12 @@ type UploadResult struct {
 
 type FileVisitFunction func(path string, file os.FileInfo) error
 type FileWalkCompleteFunction func() error
+type ProgressFunction func(pd ProgressData)
+type ProgressData struct {
+	Index int
+	Max   int
+	Value any
+}
 
 // @TODO evaluate PathConfig as an input.  should this just be a string path.....
 type FileStore interface {
@@ -106,47 +113,9 @@ func NewFileStore(fsconfig interface{}) (FileStore, error) {
 	case BlockFSConfig:
 		fs := BlockFS{}
 		return &fs, nil
-
-	/*
-		case S3FSRole:
-			sess := session.Must(session.NewSession())
-			// Create the credentials from AssumeRoleProvider to assume the role referenced by the "myRoleARN" ARN.
-			creds := stscreds.NewCredentials(sess, scType.ARN)
-			sess.Config = &aws.Config{Credentials: creds}
-			// Create service client value configured for credentials
-			// from assumed role.
-			//svc := s3.New(sess, &aws.Config{Credentials: creds})
-			fs := S3FS{
-				session:   sess,
-				role:      &scType,
-				delimiter: "/",
-				maxKeys:   1000,
-			}
-			return &fs, nil
-	*/
-
-	/*
-		case S3FSConfig:
-			if scType.S3Id == "" {
-				cfg, err := external.LoadDefaultAWSConfig()
-			}
-			creds := credentials.NewStaticCredentials(scType.S3Id, scType.S3Key, "")
-			cfg := aws.NewConfig().WithRegion(scType.S3Region).WithCredentials(creds)
-			sess, err := session.NewSession(cfg)
-			if err != nil {
-				return nil, err
-			}
-
-			fs := S3FS{
-				session:   sess,
-				config:    &scType,
-				delimiter: "/",
-				maxKeys:   1000,
-			}
-			return &fs, nil
-	*/
-
 	case S3FSConfig:
+		var cfg aws.Config
+		var err error
 		maxKeys := DEFAULTMAXKEYS
 		if scType.MaxKeys > 0 {
 			maxKeys = scType.MaxKeys
@@ -155,13 +124,29 @@ func NewFileStore(fsconfig interface{}) (FileStore, error) {
 		if scType.Delimiter != "" {
 			delimiter = scType.Delimiter
 		}
-		cfg, err := config.LoadDefaultConfig(
+		loadOptions := []func(*config.LoadOptions) error{}
+		loadOptions = append(loadOptions, config.WithRegion(scType.S3Region))
+		switch cred := scType.Credentials.(type) {
+		case S3FS_Static:
+			loadOptions = append(loadOptions, config.WithCredentialsProvider(
+				credentials.NewStaticCredentialsProvider(cred.S3Id, cred.S3Key, ""),
+			))
+		case S3FS_Attached:
+			if cred.Profile != "" {
+				loadOptions = append(loadOptions, config.WithSharedConfigProfile(cred.Profile))
+			}
+		case S3FS_Role:
+			return nil, errors.New("Assumed rules are not supported")
+
+		default:
+			return nil, errors.New("Invalid S3 Credentials")
+		}
+
+		cfg, err = config.LoadDefaultConfig(
 			context.TODO(),
-			config.WithRegion(scType.S3Region),
-			config.WithCredentialsProvider(
-				credentials.NewStaticCredentialsProvider(scType.S3Id, scType.S3Key, ""),
-			),
+			loadOptions...,
 		)
+
 		if err != nil {
 			return nil, err
 		}
@@ -179,6 +164,8 @@ func NewFileStore(fsconfig interface{}) (FileStore, error) {
 		return nil, errors.New(fmt.Sprintf("Invalid File System System Type Configuration: %v", scType))
 	}
 }
+
+//config.WithSharedConfigProfile("my-account-name"))
 
 type PathParts struct {
 	Parts []string

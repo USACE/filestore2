@@ -8,10 +8,55 @@ import (
 	"testing"
 )
 
+func TestProfileCreds(t *testing.T) {
+	config := S3FSConfig{
+		Credentials: S3FS_Attached{
+			Profile: "orm-p",
+		},
+		S3Region: os.Getenv("AWS_REGION"),
+		S3Bucket: os.Getenv("AWS_BUCKET"),
+	}
+
+	fs, err := NewFileStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := PathConfig{Path: os.Getenv("TEST_DIR")}
+	dirs, err := fs.GetDir(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(dirs)
+}
+
+func TestStaticCreds(t *testing.T) {
+	config := S3FSConfig{
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
+		S3Region: os.Getenv("AWS_REGION"),
+		S3Bucket: os.Getenv("AWS_BUCKET"),
+	}
+
+	fs, err := NewFileStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := PathConfig{Path: os.Getenv("TEST_DIR")}
+	dirs, err := fs.GetDir(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(dirs)
+}
+
 func TestGetDir(t *testing.T) {
 	config := S3FSConfig{
-		S3Id:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		S3Key:    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
 	}
@@ -30,8 +75,10 @@ func TestGetDir(t *testing.T) {
 
 func TestGetObject(t *testing.T) {
 	config := S3FSConfig{
-		S3Id:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		S3Key:    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
 	}
@@ -53,8 +100,10 @@ func TestGetObject(t *testing.T) {
 
 func TestGetObjectInfo(t *testing.T) {
 	config := S3FSConfig{
-		S3Id:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		S3Key:    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
 	}
@@ -73,8 +122,10 @@ func TestGetObjectInfo(t *testing.T) {
 
 func TestPutObject(t *testing.T) {
 	config := S3FSConfig{
-		S3Id:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		S3Key:    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
 	}
@@ -97,8 +148,10 @@ func TestPutObject(t *testing.T) {
 
 func TestCopyObject(t *testing.T) {
 	config := S3FSConfig{
-		S3Id:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		S3Key:    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
 	}
@@ -116,10 +169,38 @@ func TestCopyObject(t *testing.T) {
 	}
 }
 
+/*
+func TestCopyObjectByParts(t *testing.T) {
+	config := S3FSConfig{
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
+		S3Region: os.Getenv("AWS_REGION"),
+		S3Bucket: os.Getenv("AWS_BUCKET"),
+	}
+
+	fs, err := NewFileStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srcpath := PathConfig{Path: "filestore_tests/Archive.zip"}
+	destpath := PathConfig{Path: "filestore_tests/Archive2.zip"}
+	s3fs := fs.(*S3FS)
+	err = s3fs.copyPartsTo(srcpath, destpath)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+*/
+
 func TestUpload(t *testing.T) {
 	config := S3FSConfig{
-		S3Id:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		S3Key:    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
 	}
@@ -143,8 +224,10 @@ func TestUpload(t *testing.T) {
 
 func TestUploadFile(t *testing.T) {
 	config := S3FSConfig{
-		S3Id:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		S3Key:    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
 	}
@@ -164,8 +247,10 @@ func TestUploadFile(t *testing.T) {
 
 func TestDeleteObject(t *testing.T) {
 	config := S3FSConfig{
-		S3Id:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		S3Key:    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
 	}
@@ -184,8 +269,10 @@ func TestDeleteObject(t *testing.T) {
 
 func TestDeleteObjects(t *testing.T) {
 	config := S3FSConfig{
-		S3Id:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		S3Key:    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
 	}
@@ -208,8 +295,10 @@ func TestDeleteObjects(t *testing.T) {
 
 func TestWalk(t *testing.T) {
 	config := S3FSConfig{
-		S3Id:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		S3Key:    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Static{
+			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
+			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
 		MaxKeys:  2,
