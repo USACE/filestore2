@@ -98,6 +98,8 @@ type S3FSConfig struct {
 	Delimiter   string
 	MaxKeys     int32
 	Credentials any
+	S3Id        string //@Depricated will be removed in next version. Use S3FS_Static credentials
+	S3Key       string //@Depricated will be removed in next version. Use S3FS_Static credentials
 }
 
 type S3FS struct {
