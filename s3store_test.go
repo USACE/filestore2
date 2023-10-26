@@ -169,32 +169,6 @@ func TestCopyObject(t *testing.T) {
 	}
 }
 
-/*
-func TestCopyObjectByParts(t *testing.T) {
-	config := S3FSConfig{
-		Credentials: S3FS_Static{
-			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
-			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
-		},
-		S3Region: os.Getenv("AWS_REGION"),
-		S3Bucket: os.Getenv("AWS_BUCKET"),
-	}
-
-	fs, err := NewFileStore(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	srcpath := PathConfig{Path: "filestore_tests/Archive.zip"}
-	destpath := PathConfig{Path: "filestore_tests/Archive2.zip"}
-	s3fs := fs.(*S3FS)
-	err = s3fs.copyPartsTo(srcpath, destpath)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-*/
-
 func TestUpload(t *testing.T) {
 	config := S3FSConfig{
 		Credentials: S3FS_Static{

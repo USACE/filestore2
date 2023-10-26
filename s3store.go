@@ -405,7 +405,7 @@ func (s3fs *S3FS) copyPartsTo(sourcePath PathConfig, destPath PathConfig, fileSi
 
 	var i int64
 	var partNumber int32 = 1
-	copySource := fmt.Sprintf("%s/%s", s3fs.config.S3Bucket, source)
+	//copySource := fmt.Sprintf("%s/%s", s3fs.config.S3Bucket, source)
 
 	parts := make([]types.CompletedPart, 0)
 	numUploads := fileSize / max_copy_chunk_size
@@ -415,7 +415,7 @@ func (s3fs *S3FS) copyPartsTo(sourcePath PathConfig, destPath PathConfig, fileSi
 		copyRange := buildCopySourceRange(i, fileSize)
 		partInput := s3.UploadPartCopyInput{
 			Bucket:          &s3fs.config.S3Bucket,
-			CopySource:      &copySource,
+			CopySource:      &source,
 			CopySourceRange: &copyRange,
 			Key:             &dest,
 			PartNumber:      partNumber,
