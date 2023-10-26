@@ -28,7 +28,6 @@ v3------------------------
 	CompleteObjectUpload(CompletedObjectUploadConfig) error
 	DeleteObjects(path PathConfig, pf ProgressFunction) error
 	Walk(string, FileVisitFunction) error
-
     PutObject(input PutObjectInput) (*FileOperationOutput, error)
 	CopyObject(input CopyObjectInput) error
 
@@ -37,16 +36,7 @@ v3------------------------
 	GetSignedObject(SignedObjectConfig) (io.ReadCloser, error)
 
 
-type PutObjectInput struct{
-	source ObjectSource
-	dest PathConfig
-}
 
-type ObjectSource struct{
-	reader io.Reader
-	data *[]byte
-	filepath PathConfig
-}
 
 //returns a reader to whatever ObjectSource is being used
 func (os *ObjectSource) Reader() error

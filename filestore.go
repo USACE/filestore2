@@ -1,6 +1,7 @@
 package filestore
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"errors"
@@ -89,22 +90,44 @@ type ProgressData struct {
 	Value any
 }
 
-// @TODO evaluate PathConfig as an input.  should this just be a string path.....
+type PutObjectInput struct {
+	source   ObjectSource
+	dest     PathConfig
+	mutipart bool
+	partSize int
+}
+
+type ObjectSource struct {
+	reader   io.ReadCloser
+	data     []byte
+	filepath PathConfig
+}
+
+func (obs *ObjectSource) Reader() (io.ReadCloser, error) {
+	if obs.reader != nil {
+		return obs.reader, nil
+	}
+	if obs.filepath.Path != "" {
+		return os.Open(obs.filepath.Path)
+	}
+	if obs.data != nil {
+		return io.NopCloser(bytes.NewReader(obs.data)), nil
+	}
+	return nil, errors.New("Invalid ObjectSource configuration")
+}
+
 type FileStore interface {
 	GetDir(path PathConfig) (*[]FileStoreResultObject, error)
-	GetObject(PathConfig) (io.ReadCloser, error)
 	GetObjectInfo(PathConfig) (fs.FileInfo, error)
-	PutObject(PathConfig, []byte) (*FileOperationOutput, error)
-	CopyObject(source PathConfig, dest PathConfig) error
+	GetObject(PathConfig) (io.ReadCloser, error)
 	ResourceName() string
-	Upload(reader io.Reader, key string) error
-	UploadFile(filepth string, key string) error
 	InitializeObjectUpload(UploadConfig) (UploadResult, error)
 	WriteChunk(UploadConfig) (UploadResult, error)
 	CompleteObjectUpload(CompletedObjectUploadConfig) error
-	DeleteObject(path string) error //depricate eventually?
 	DeleteObjects(path PathConfig) error
 	Walk(string, FileVisitFunction) error
+	PutObject(PutObjectInput) (*FileOperationOutput, error)
+	CopyObject(source PathConfig, dest PathConfig) error
 }
 
 func NewFileStore(fsconfig interface{}) (FileStore, error) {

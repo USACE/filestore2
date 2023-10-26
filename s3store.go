@@ -208,57 +208,43 @@ func (s3fs *S3FS) GetObject(path PathConfig) (io.ReadCloser, error) {
 	return output.Body, err
 }
 
+func (s3fs *S3FS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
+	s3Path := strings.TrimPrefix(poi.dest.Path, "/")
+	defer poi.source.reader.Close()
+	if poi.mutipart {
+		uploader := manager.NewUploader(s3fs.s3client)
+		s3output, err := uploader.Upload(context.TODO(), &s3.PutObjectInput{
+			Bucket: &s3fs.config.S3Bucket,
+			Key:    &s3Path,
+			Body:   poi.source.reader,
+		})
+		if err != nil {
+			return nil, err
+		}
+		output := &FileOperationOutput{
+			Md5: *s3output.ETag,
+		}
+		return output, err
+	} else {
+		input := &s3.PutObjectInput{
+			Bucket: &s3fs.config.S3Bucket,
+			Body:   poi.source.reader,
+			//ContentLength: int64(len(data)),
+			Key: &s3Path,
+		}
+		s3output, err := s3fs.s3client.PutObject(context.TODO(), input)
+		if err != nil {
+			return nil, err
+		}
+		output := &FileOperationOutput{
+			Md5: *s3output.ETag,
+		}
+		return output, err
+	}
+
+}
+
 /*
-iter := s3manager.NewDeleteListIterator(svc, &s3.ListObjectsInput{
-		Bucket: aws.String(s3fs.config.S3Bucket),
-		Prefix: aws.String(s3Path),
-	})
-
-	err := s3manager.NewBatchDeleteWithClient(svc).Delete(context.Background(), iter)
-*/
-
-func (s3fs *S3FS) Upload(reader io.Reader, key string) error {
-	uploader := manager.NewUploader(s3fs.s3client)
-
-	_, err := uploader.Upload(context.TODO(), &s3.PutObjectInput{
-		Bucket: &s3fs.config.S3Bucket,
-		Key:    &key,
-		Body:   reader,
-	})
-
-	return err
-}
-
-func (s3fs *S3FS) UploadFile(filepath string, key string) error {
-	file, err := os.Open(filepath)
-	if err != nil {
-		return errors.New(fmt.Sprintf("Unable to open file %q, %v", filepath, err))
-	}
-
-	defer file.Close()
-	return s3fs.Upload(file, key)
-}
-
-func (s3fs *S3FS) PutObject(path PathConfig, data []byte) (*FileOperationOutput, error) {
-	s3Path := strings.TrimPrefix(path.Path, "/")
-	reader := bytes.NewReader(data)
-	input := &s3.PutObjectInput{
-		Bucket:        &s3fs.config.S3Bucket,
-		Body:          reader,
-		ContentLength: int64(len(data)),
-		Key:           &s3Path,
-	}
-	s3output, err := s3fs.s3client.PutObject(context.TODO(), input)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Print(s3output)
-	output := &FileOperationOutput{
-		Md5: *s3output.ETag,
-	}
-	return output, err
-}
-
 func (s3fs *S3FS) DeleteObject(path string) error {
 	s3Path := strings.TrimPrefix(path, "/")
 	input := &s3.DeleteObjectsInput{
@@ -275,6 +261,7 @@ func (s3fs *S3FS) DeleteObject(path string) error {
 	_, err := s3fs.deleteObjectsImpl(input)
 	return err
 }
+*/
 
 func (s3fs *S3FS) deleteObjectsImpl(input *s3.DeleteObjectsInput) (*s3.DeleteObjectsOutput, error) {
 	result, err := s3fs.s3client.DeleteObjects(context.TODO(), input)
@@ -609,6 +596,8 @@ func (s3fs *S3FS) SetObjectPublic(path PathConfig) (string, error) {
 	log.Println(url)
 	return url, err
 }
+
+/////util functions
 
 func buildCopySourceRange(start int64, objectSize int64) string {
 	end := start + max_copy_chunk_size - 1

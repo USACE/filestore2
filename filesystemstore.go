@@ -1,7 +1,6 @@
 package filestore
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -58,6 +57,7 @@ func (b *BlockFS) GetObject(path PathConfig) (io.ReadCloser, error) {
 	return os.Open(path.Path)
 }
 
+/*
 func (b *BlockFS) DeleteObject(path string) error {
 	var err error
 	if isDir(path) {
@@ -67,8 +67,11 @@ func (b *BlockFS) DeleteObject(path string) error {
 	}
 	return err
 }
+*/
 
-func (b *BlockFS) PutObject(path PathConfig, data []byte) (*FileOperationOutput, error) {
+func (b *BlockFS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
+	data := poi.source.data
+	path := poi.source.filepath
 	if len(data) == 0 {
 		f := FileOperationOutput{}
 		err := os.MkdirAll(filepath.Dir(path.Path), os.ModePerm)
@@ -115,14 +118,6 @@ func (b *BlockFS) DeleteObjects(path PathConfig) error {
 		}
 	}
 	return err
-}
-
-func (b *BlockFS) UploadFile(filepath string, key string) error {
-	return errors.New("Not Implemented")
-}
-
-func (b *BlockFS) Upload(reader io.Reader, key string) error {
-	return errors.New("Not Implemented")
 }
 
 func (b *BlockFS) InitializeObjectUpload(u UploadConfig) (UploadResult, error) {
