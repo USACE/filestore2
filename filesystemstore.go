@@ -20,11 +20,11 @@ type BlockFSConfig struct{}
 type BlockFS struct{}
 
 func (b *BlockFS) GetObjectInfo(path PathConfig) (fs.FileInfo, error) {
-	file, err := os.Open(path.Path)
+	file, err := os.Stat(path.Path)
 	if err != nil {
 		return nil, err
 	}
-	return file.Stat()
+	return file, nil
 }
 
 func (b *BlockFS) GetDir(path PathConfig) (*[]FileStoreResultObject, error) {
@@ -53,8 +53,9 @@ func (b *BlockFS) ResourceName() string {
 	return ""
 }
 
-func (b *BlockFS) GetObject(path PathConfig) (io.ReadCloser, error) {
-	return os.Open(path.Path)
+func (b *BlockFS) GetObject(goi GetObjectInput) (io.ReadCloser, error) {
+	//@TODO implement range
+	return os.Open(goi.Path.Path)
 }
 
 /*
@@ -70,8 +71,8 @@ func (b *BlockFS) DeleteObject(path string) error {
 */
 
 func (b *BlockFS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
-	data := poi.source.data
-	path := poi.source.filepath
+	data := poi.Source.data
+	path := poi.Source.filepath
 	if len(data) == 0 {
 		f := FileOperationOutput{}
 		err := os.MkdirAll(filepath.Dir(path.Path), os.ModePerm)
@@ -108,7 +109,7 @@ func (b *BlockFS) CopyObject(sourcePath PathConfig, destPath PathConfig) error {
 	return err
 }
 
-func (b *BlockFS) DeleteObjects(path PathConfig) error {
+func (b *BlockFS) DeleteObjects(path PathConfig) []error {
 	var err error
 	for _, p := range path.Paths {
 		if isDir(p) {
@@ -117,7 +118,7 @@ func (b *BlockFS) DeleteObjects(path PathConfig) error {
 			err = os.Remove(p)
 		}
 	}
-	return err
+	return []error{err}
 }
 
 func (b *BlockFS) InitializeObjectUpload(u UploadConfig) (UploadResult, error) {

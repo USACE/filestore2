@@ -8,10 +8,15 @@ import (
 	"testing"
 )
 
+var testout string = `&[{0 10  filestore_tests/10/  true 0001-01-01 00:00:00 +0000 UTC } {1 2D Unsteady Flow Hydraulics  filestore_tests/2D Unsteady Flow Hydraulics/  true 0001-01-01 00:00:00 +0000 UTC } {2 filestore_tests 0 filestore_tests  false 2023-10-06 21:02:48 +0000 UTC } {3 Archive.zip 73501923 filestore_tests .zip false 2023-10-18 19:56:14 +0000 UTC } {4 Archive2.zip 73501923 filestore_tests .zip false 2023-10-19 13:05:36 +0000 UTC } {5 image1.jpg 177142 filestore_tests .jpg false 2023-10-06 21:07:11 +0000 UTC }]`
+
+var testProfile string = os.Getenv("TEST_PROFILE")
+var testObjectString string = "HELLO WORLD"
+
 func TestProfileCreds(t *testing.T) {
 	config := S3FSConfig{
 		Credentials: S3FS_Attached{
-			Profile: "orm-p",
+			Profile: testProfile,
 		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
@@ -26,7 +31,13 @@ func TestProfileCreds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(dirs)
+	out := fmt.Sprintln(dirs)
+	fmt.Println(out)
+	fmt.Println(testout)
+	if out != testout {
+		t.Fatalf(`Failed Test Profile Creds, got %s expected %s\n`, out, testout)
+	}
+	fmt.Println(out)
 }
 
 func TestStaticCreds(t *testing.T) {
@@ -53,9 +64,8 @@ func TestStaticCreds(t *testing.T) {
 
 func TestGetDir(t *testing.T) {
 	config := S3FSConfig{
-		Credentials: S3FS_Static{
-			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
-			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
 		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
@@ -70,39 +80,19 @@ func TestGetDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(dirs)
-}
-
-func TestGetObject(t *testing.T) {
-	config := S3FSConfig{
-		Credentials: S3FS_Static{
-			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
-			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
-		},
-		S3Region: os.Getenv("AWS_REGION"),
-		S3Bucket: os.Getenv("AWS_BUCKET"),
+	out := fmt.Sprintln(dirs)
+	fmt.Println(out)
+	fmt.Println(testout)
+	if out != testout {
+		t.Fatalf(`Failed Test Profile Creds, got %s expected %s\n`, out, testout)
 	}
-
-	fs, err := NewFileStore(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := PathConfig{Path: os.Getenv("TEST_FILE")}
-	reader, err := fs.GetObject(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	buf := new(strings.Builder)
-	io.Copy(buf, reader)
-	// check errors
-	fmt.Println(buf.String())
+	fmt.Println(out)
 }
 
 func TestGetObjectInfo(t *testing.T) {
 	config := S3FSConfig{
-		Credentials: S3FS_Static{
-			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
-			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
 		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
@@ -112,7 +102,7 @@ func TestGetObjectInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := PathConfig{Path: os.Getenv("TEST_FILE")}
+	path := PathConfig{Path: os.Getenv("TEST_TEXT_FILE")}
 	info, err := fs.GetObjectInfo(path)
 	if err != nil {
 		t.Fatal(err)
@@ -120,11 +110,10 @@ func TestGetObjectInfo(t *testing.T) {
 	fmt.Println(info)
 }
 
-func TestPutObject(t *testing.T) {
+func TestGetObject(t *testing.T) {
 	config := S3FSConfig{
-		Credentials: S3FS_Static{
-			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
-			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
 		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
@@ -134,12 +123,144 @@ func TestPutObject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(os.Getenv("TEST_PUT_SRC"))
+	path := PathConfig{Path: os.Getenv("TEST_TEXT_FILE")}
+	reader, err := fs.GetObject(GetObjectInput{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := new(strings.Builder)
+	io.Copy(buf, reader)
+	out := buf.String()
+	if out != testObjectString {
+		t.Fatalf(`Failed Test GetObject, got %s expected %s\n`, out, testObjectString)
+	}
+}
+
+func TestGetObjectSlice(t *testing.T) {
+	config := S3FSConfig{
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
+		},
+		S3Region: os.Getenv("AWS_REGION"),
+		S3Bucket: os.Getenv("AWS_BUCKET"),
+	}
+
+	fs, err := NewFileStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := PathConfig{Path: os.Getenv("TEST_TEXT_FILE")}
+	reader, err := fs.GetObject(GetObjectInput{Path: path, Range: "bytes=0-4"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := new(strings.Builder)
+	io.Copy(buf, reader)
+	out := buf.String()
+	if out != testObjectString[:5] {
+		t.Fatalf(`Failed Test GetObject, got %s expected %s`, out, testObjectString[:5])
+	}
+}
+
+func TestResourceName(t *testing.T) {
+	config := S3FSConfig{
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
+		},
+		S3Region: os.Getenv("AWS_REGION"),
+		S3Bucket: os.Getenv("AWS_BUCKET"),
+	}
+
+	fs, err := NewFileStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := fs.ResourceName()
+	testname := os.Getenv("AWS_BUCKET")
+	if name != testname {
+		t.Fatalf(`Failed Test GetObject, got %s expected %s\n`, name, testname)
+	}
+}
+
+func TestPutObjectBytes(t *testing.T) {
+	config := S3FSConfig{
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
+		},
+		S3Region: os.Getenv("AWS_REGION"),
+		S3Bucket: os.Getenv("AWS_BUCKET"),
+	}
+
+	fs, err := NewFileStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(os.Getenv("TEST_TXT_SRC"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := PathConfig{Path: os.Getenv("TEST_TEXT_FILE")}
+	poi := PutObjectInput{
+		Source: ObjectSource{data: data},
+		Dest:   path,
+	}
+	out, err := fs.PutObject(poi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(out.Md5)
+}
+
+func TestPutObjectReader(t *testing.T) {
+	config := S3FSConfig{
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
+		},
+		S3Region: os.Getenv("AWS_REGION"),
+		S3Bucket: os.Getenv("AWS_BUCKET"),
+	}
+
+	fs, err := NewFileStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := os.Open(os.Getenv("TEST_PUT_SRC"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := PathConfig{Path: os.Getenv("TEST_PUT_DEST")}
-	out, err := fs.PutObject(path, data)
+	poi := PutObjectInput{
+		Source: ObjectSource{reader: reader},
+		Dest:   path,
+	}
+	out, err := fs.PutObject(poi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(out.Md5)
+}
+
+func TestPutObjectFile(t *testing.T) {
+	config := S3FSConfig{
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
+		},
+		S3Region: os.Getenv("AWS_REGION"),
+		S3Bucket: os.Getenv("AWS_BUCKET"),
+	}
+
+	fs, err := NewFileStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filepath := PathConfig{Path: os.Getenv("TEST_TXT_SRC")}
+
+	path := PathConfig{Path: os.Getenv("TEST_TEXT_FILE") + ".f.txt"}
+	poi := PutObjectInput{
+		Source: ObjectSource{filepath: filepath},
+		Dest:   path,
+	}
+	out, err := fs.PutObject(poi)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,9 +269,8 @@ func TestPutObject(t *testing.T) {
 
 func TestCopyObject(t *testing.T) {
 	config := S3FSConfig{
-		Credentials: S3FS_Static{
-			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
-			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
 		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
@@ -161,7 +281,7 @@ func TestCopyObject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srcpath := PathConfig{Path: os.Getenv("AWS_BUCKET") + "/" + os.Getenv("TEST_COPY_SRC")}
+	srcpath := PathConfig{Path: os.Getenv("TEST_COPY_SRC")}
 	destpath := PathConfig{Path: os.Getenv("TEST_COPY_DEST")}
 	err = fs.CopyObject(srcpath, destpath)
 	if err != nil {
@@ -169,61 +289,10 @@ func TestCopyObject(t *testing.T) {
 	}
 }
 
-func TestUpload(t *testing.T) {
-	config := S3FSConfig{
-		Credentials: S3FS_Static{
-			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
-			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
-		},
-		S3Region: os.Getenv("AWS_REGION"),
-		S3Bucket: os.Getenv("AWS_BUCKET"),
-	}
-
-	fs, err := NewFileStore(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	srcpath := os.Getenv("TEST_UPLOAD_SRC")
-	destpath := os.Getenv("TEST_UPLOAD_DEST")
-	reader, err := os.Open(srcpath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = fs.Upload(reader, destpath)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestUploadFile(t *testing.T) {
-	config := S3FSConfig{
-		Credentials: S3FS_Static{
-			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
-			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
-		},
-		S3Region: os.Getenv("AWS_REGION"),
-		S3Bucket: os.Getenv("AWS_BUCKET"),
-	}
-
-	fs, err := NewFileStore(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	srcpath := os.Getenv("TEST_UPLOAD_SRC")
-	destpath := os.Getenv("TEST_UPLOAD_DEST")
-	err = fs.UploadFile(srcpath, destpath)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestDeleteObject(t *testing.T) {
 	config := S3FSConfig{
-		Credentials: S3FS_Static{
-			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
-			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
 		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
@@ -235,17 +304,16 @@ func TestDeleteObject(t *testing.T) {
 	}
 
 	path := os.Getenv("TEST_COPY_DEST")
-	err = fs.DeleteObject(path)
-	if err != nil {
-		t.Fatal(err)
+	errs := fs.DeleteObjects(PathConfig{Paths: []string{path}})
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
 	}
 }
 
 func TestDeleteObjects(t *testing.T) {
 	config := S3FSConfig{
-		Credentials: S3FS_Static{
-			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
-			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
 		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
@@ -261,17 +329,16 @@ func TestDeleteObjects(t *testing.T) {
 		os.Getenv("TEST_COPY_DEST"),
 	}}
 
-	err = fs.DeleteObjects(path)
-	if err != nil {
-		t.Fatal(err)
+	errs := fs.DeleteObjects(path)
+	if len(errs) > 0 {
+		t.Fatal(errs)
 	}
 }
 
 func TestWalk(t *testing.T) {
 	config := S3FSConfig{
-		Credentials: S3FS_Static{
-			S3Id:  os.Getenv("AWS_ACCESS_KEY_ID"),
-			S3Key: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
 		},
 		S3Region: os.Getenv("AWS_REGION"),
 		S3Bucket: os.Getenv("AWS_BUCKET"),
@@ -279,7 +346,6 @@ func TestWalk(t *testing.T) {
 	}
 
 	fs, err := NewFileStore(config)
-	fs.(*S3FS).ignoreContinuationOnWalk = true
 	if err != nil {
 		t.Fatal(err)
 	}

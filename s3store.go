@@ -198,25 +198,30 @@ func (s3fs *S3FS) GetDir(path PathConfig) (*[]FileStoreResultObject, error) {
 	return &result, nil
 }
 
-func (s3fs *S3FS) GetObject(path PathConfig) (io.ReadCloser, error) {
-	s3Path := strings.TrimPrefix(path.Path, "/")
+func (s3fs *S3FS) GetObject(goi GetObjectInput) (io.ReadCloser, error) {
+	s3Path := strings.TrimPrefix(goi.Path.Path, "/")
 	input := &s3.GetObjectInput{
 		Bucket: &s3fs.config.S3Bucket,
 		Key:    &s3Path,
+		Range:  &goi.Range,
 	}
 	output, err := s3fs.s3client.GetObject(context.TODO(), input)
 	return output.Body, err
 }
 
 func (s3fs *S3FS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
-	s3Path := strings.TrimPrefix(poi.dest.Path, "/")
-	defer poi.source.reader.Close()
-	if poi.mutipart {
+	s3Path := strings.TrimPrefix(poi.Dest.Path, "/")
+	reader, err := poi.Source.ReadCloser()
+	if err != nil {
+		return nil, fmt.Errorf("Unable to get the Source Reader: %s\n", err)
+	}
+	defer reader.Close()
+	if poi.Mutipart {
 		uploader := manager.NewUploader(s3fs.s3client)
 		s3output, err := uploader.Upload(context.TODO(), &s3.PutObjectInput{
 			Bucket: &s3fs.config.S3Bucket,
 			Key:    &s3Path,
-			Body:   poi.source.reader,
+			Body:   reader,
 		})
 		if err != nil {
 			return nil, err
@@ -227,10 +232,10 @@ func (s3fs *S3FS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
 		return output, err
 	} else {
 		input := &s3.PutObjectInput{
-			Bucket: &s3fs.config.S3Bucket,
-			Body:   poi.source.reader,
-			//ContentLength: int64(len(data)),
-			Key: &s3Path,
+			Bucket:        &s3fs.config.S3Bucket,
+			Body:          reader,
+			ContentLength: poi.Source.ContentLength,
+			Key:           &s3Path,
 		}
 		s3output, err := s3fs.s3client.PutObject(context.TODO(), input)
 		if err != nil {
@@ -244,31 +249,7 @@ func (s3fs *S3FS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
 
 }
 
-/*
-func (s3fs *S3FS) DeleteObject(path string) error {
-	s3Path := strings.TrimPrefix(path, "/")
-	input := &s3.DeleteObjectsInput{
-		Bucket: &s3fs.config.S3Bucket,
-		Delete: &types.Delete{
-			Objects: []types.ObjectIdentifier{
-				{
-					Key: &s3Path,
-				},
-			},
-			Quiet: false,
-		},
-	}
-	_, err := s3fs.deleteObjectsImpl(input)
-	return err
-}
-*/
-
-func (s3fs *S3FS) deleteObjectsImpl(input *s3.DeleteObjectsInput) (*s3.DeleteObjectsOutput, error) {
-	result, err := s3fs.s3client.DeleteObjects(context.TODO(), input)
-	return result, err
-}
-
-func (s3fs *S3FS) DeleteObjects(path PathConfig) error {
+func (s3fs *S3FS) DeleteObjects(path PathConfig) []error {
 
 	objects := make([]types.ObjectIdentifier, 0, len(path.Paths))
 	for _, p := range path.Paths {
@@ -288,16 +269,8 @@ func (s3fs *S3FS) DeleteObjects(path PathConfig) error {
 		},
 	}
 
-	//@TODO - handle errors
-	s3fs.deleteListImpl(input)
+	return s3fs.deleteListImpl(input)
 
-	/*
-		for i,e:=range errs{
-			if
-		}
-	*/
-
-	return nil
 }
 
 func (s3fs *S3FS) deleteListImpl(input *s3.DeleteObjectsInput) []error {
@@ -320,6 +293,7 @@ func (s3fs *S3FS) deleteListImpl(input *s3.DeleteObjectsInput) []error {
 			}
 			return nil
 		})
+
 		//flush any remaining deletes
 		err := s3fs.flushDeletes(delBuffer)
 		if err != nil {
@@ -329,15 +303,35 @@ func (s3fs *S3FS) deleteListImpl(input *s3.DeleteObjectsInput) []error {
 	return errs
 }
 
-func (s3fs *S3FS) flushDeletes(delBuffer []types.ObjectIdentifier) error {
+func (s3fs *S3FS) flushDeletes(delBuffer []types.ObjectIdentifier) []error {
+	if len(delBuffer) == 0 {
+		return []error{errors.New("nothing to delete")}
+	}
 	input := &s3.DeleteObjectsInput{
 		Bucket: &s3fs.config.S3Bucket,
 		Delete: &types.Delete{
 			Objects: delBuffer,
 		},
 	}
-	_, err := s3fs.deleteObjectsImpl(input)
-	return err
+	out, err := s3fs.deleteObjectsImpl(input)
+	if err != nil {
+		return []error{err}
+	}
+
+	errs := make([]error, len(out.Errors))
+	for i, e := range out.Errors {
+		if e.Key != nil && e.Code != nil && e.Message != nil {
+			errs[i] = fmt.Errorf("%s: %s: %s", *e.Key, *e.Code, *e.Message)
+		} else {
+			errs[i] = errors.New("Unknown AWS delete error")
+		}
+	}
+	return errs
+}
+
+func (s3fs *S3FS) deleteObjectsImpl(input *s3.DeleteObjectsInput) (*s3.DeleteObjectsOutput, error) {
+	result, err := s3fs.s3client.DeleteObjects(context.TODO(), input)
+	return result, err
 }
 
 func (s3fs *S3FS) CopyObject(sourcePath PathConfig, destPath PathConfig) error {
@@ -349,7 +343,7 @@ func (s3fs *S3FS) CopyObject(sourcePath PathConfig, destPath PathConfig) error {
 
 	var fileSize int64 = info.Size()
 	if fileSize < max_put_object_copy_size {
-		source := strings.TrimPrefix(sourcePath.Path, "/")
+		source := fmt.Sprintf("%s/%s", s3fs.ResourceName(), strings.TrimPrefix(sourcePath.Path, "/"))
 		dest := strings.TrimPrefix(destPath.Path, "/")
 		input := s3.CopyObjectInput{
 			Bucket:     &s3fs.config.S3Bucket,
@@ -364,7 +358,7 @@ func (s3fs *S3FS) CopyObject(sourcePath PathConfig, destPath PathConfig) error {
 }
 
 func (s3fs *S3FS) copyPartsTo(sourcePath PathConfig, destPath PathConfig, fileSize int64) error {
-	source := strings.TrimPrefix(sourcePath.Path, "/")
+	source := fmt.Sprintf("%s/%s", s3fs.ResourceName(), strings.TrimPrefix(sourcePath.Path, "/"))
 	dest := strings.TrimPrefix(destPath.Path, "/")
 
 	/*
@@ -543,7 +537,6 @@ func (s3fs *S3FS) Walk(path string, vistorFunction FileVisitFunction) error {
 			return err
 		}
 		for _, content := range resp.Contents {
-			//fmt.Printf("Processing: %s\n", *content.Key)
 			fileInfo := &S3FileInfo{&content}
 			err = vistorFunction("/"+*content.Key, fileInfo)
 			if err != nil {

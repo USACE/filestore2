@@ -35,6 +35,8 @@ v3------------------------
 	PublicGetObject(PathConfig) (string, error)
 	GetSignedObject(SignedObjectConfig) (io.ReadCloser, error)
 
+	Count(path PathConfig) (CountResult,error) //returns count of all "objects" matching the path
+
 
 
 
@@ -55,3 +57,4 @@ resume download?
  - send chunks
    - file sysem byte slice
    - s3 ranged read
+
