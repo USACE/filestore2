@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -98,8 +99,7 @@ type S3FSConfig struct {
 	Delimiter   string
 	MaxKeys     int32
 	Credentials any
-	S3Id        string //@Depricated will be removed in next version. Use S3FS_Static credentials
-	S3Key       string //@Depricated will be removed in next version. Use S3FS_Static credentials
+	AwsOptions  []func(*config.LoadOptions) error
 }
 
 type S3FS struct {
@@ -128,6 +128,7 @@ func (s3fs *S3FS) GetObjectInfo(path PathConfig) (fs.FileInfo, error) {
 			types.ObjectAttributesObjectSize,
 		},
 	}
+
 	resp, err := s3fs.s3client.GetObjectAttributes(context.TODO(), params)
 	return &S3AttributesFileInfo{s3Path, resp}, err
 }
@@ -249,10 +250,10 @@ func (s3fs *S3FS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
 
 }
 
-func (s3fs *S3FS) DeleteObjects(path PathConfig) []error {
+func (s3fs *S3FS) DeleteObjects(doi DeleteObjectInput) []error {
 
-	objects := make([]types.ObjectIdentifier, 0, len(path.Paths))
-	for _, p := range path.Paths {
+	objects := make([]types.ObjectIdentifier, 0, len(doi.Path.Paths))
+	for _, p := range doi.Path.Paths {
 		p := p
 		s3Path := strings.TrimPrefix(p, "/")
 		object := types.ObjectIdentifier{
@@ -269,11 +270,11 @@ func (s3fs *S3FS) DeleteObjects(path PathConfig) []error {
 		},
 	}
 
-	return s3fs.deleteListImpl(input)
+	return s3fs.deleteListImpl(input, doi.Progress)
 
 }
 
-func (s3fs *S3FS) deleteListImpl(input *s3.DeleteObjectsInput) []error {
+func (s3fs *S3FS) deleteListImpl(input *s3.DeleteObjectsInput, pf ProgressFunction) []error {
 	errs := []error{}
 	s3fs.ignoreContinuationOnWalk = true
 	defer func() {
@@ -281,8 +282,10 @@ func (s3fs *S3FS) deleteListImpl(input *s3.DeleteObjectsInput) []error {
 	}()
 	maxDelBufferSize := 1000
 	delBuffer := []types.ObjectIdentifier{}
+	count := 0
 	for _, obj := range input.Delete.Objects {
-		s3fs.Walk(*obj.Key, func(path string, file os.FileInfo) error {
+		//s3fs.Walk(*obj.Key, func(path string, file os.FileInfo) error {
+		s3fs.Walk(WalkInput{Path: PathConfig{Path: *obj.Key}, Progress: pf}, func(path string, file os.FileInfo) error {
 			key := file.Name()
 			delBuffer = append(delBuffer, types.ObjectIdentifier{Key: &key})
 			if len(delBuffer) >= maxDelBufferSize {
@@ -291,6 +294,7 @@ func (s3fs *S3FS) deleteListImpl(input *s3.DeleteObjectsInput) []error {
 					log.Printf("Error in batch delete operation: %s\n", err)
 				}
 			}
+			count++
 			return nil
 		})
 
@@ -334,17 +338,16 @@ func (s3fs *S3FS) deleteObjectsImpl(input *s3.DeleteObjectsInput) (*s3.DeleteObj
 	return result, err
 }
 
-func (s3fs *S3FS) CopyObject(sourcePath PathConfig, destPath PathConfig) error {
-
-	info, err := s3fs.GetObjectInfo(sourcePath)
+func (s3fs *S3FS) CopyObject(coi CopyObjectInput) error {
+	info, err := s3fs.GetObjectInfo(coi.Src)
 	if err != nil {
 		return err
 	}
 
 	var fileSize int64 = info.Size()
 	if fileSize < max_put_object_copy_size {
-		source := fmt.Sprintf("%s/%s", s3fs.ResourceName(), strings.TrimPrefix(sourcePath.Path, "/"))
-		dest := strings.TrimPrefix(destPath.Path, "/")
+		source := fmt.Sprintf("%s/%s", s3fs.ResourceName(), strings.TrimPrefix(coi.Src.Path, "/"))
+		dest := strings.TrimPrefix(coi.Dest.Path, "/")
 		input := s3.CopyObjectInput{
 			Bucket:     &s3fs.config.S3Bucket,
 			CopySource: &source,
@@ -352,7 +355,7 @@ func (s3fs *S3FS) CopyObject(sourcePath PathConfig, destPath PathConfig) error {
 		}
 		_, err = s3fs.s3client.CopyObject(context.TODO(), &input)
 	} else {
-		s3fs.copyPartsTo(sourcePath, destPath, fileSize)
+		s3fs.copyPartsTo(coi.Src, coi.Dest, fileSize)
 	}
 	return err
 }
@@ -519,8 +522,8 @@ func (s3fs *S3FS) CompleteObjectUpload(u CompletedObjectUploadConfig) error {
 	return err
 }
 
-func (s3fs *S3FS) Walk(path string, vistorFunction FileVisitFunction) error {
-	s3Path := strings.TrimPrefix(path, "/")
+func (s3fs *S3FS) Walk(input WalkInput, vistorFunction FileVisitFunction) error {
+	s3Path := strings.TrimPrefix(input.Path.Path, "/")
 	s3delim := ""
 	query := &s3.ListObjectsV2Input{
 		Bucket:    &s3fs.config.S3Bucket,
@@ -530,7 +533,7 @@ func (s3fs *S3FS) Walk(path string, vistorFunction FileVisitFunction) error {
 	}
 
 	truncatedListing := true
-
+	count := 0
 	for truncatedListing {
 		resp, err := s3fs.s3client.ListObjectsV2(context.TODO(), query)
 		if err != nil {
@@ -542,11 +545,19 @@ func (s3fs *S3FS) Walk(path string, vistorFunction FileVisitFunction) error {
 			if err != nil {
 				log.Printf("Visitor Function error: %s\n", err)
 			}
+			if input.Progress != nil {
+				input.Progress(ProgressData{
+					Index: count,
+					Max:   -1,
+					Value: fileInfo,
+				})
+			}
 		}
 		if !s3fs.ignoreContinuationOnWalk {
 			query.ContinuationToken = resp.NextContinuationToken
 		}
 		truncatedListing = resp.IsTruncated
+		count++
 	}
 	return nil
 }

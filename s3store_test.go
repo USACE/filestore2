@@ -35,7 +35,7 @@ func TestProfileCreds(t *testing.T) {
 	fmt.Println(out)
 	fmt.Println(testout)
 	if out != testout {
-		t.Fatalf(`Failed Test Profile Creds, got %s expected %s\n`, out, testout)
+		t.Fatalf(`Failed Test Profile Creds, got %s expected %s`, out, testout)
 	}
 	fmt.Println(out)
 }
@@ -125,6 +125,35 @@ func TestGetObject(t *testing.T) {
 	}
 	path := PathConfig{Path: os.Getenv("TEST_TEXT_FILE")}
 	reader, err := fs.GetObject(GetObjectInput{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := new(strings.Builder)
+	io.Copy(buf, reader)
+	out := buf.String()
+	if out != testObjectString {
+		t.Fatalf(`Failed Test GetObject, got %s expected %s\n`, out, testObjectString)
+	}
+}
+
+func TestGetObjectRetry(t *testing.T) {
+	config := S3FSConfig{
+		Credentials: S3FS_Attached{
+			Profile: testProfile,
+		},
+		S3Region: os.Getenv("AWS_REGION"),
+		S3Bucket: os.Getenv("AWS_BUCKET"),
+	}
+
+	fs, err := NewFileStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := PathConfig{Path: os.Getenv("TEST_TEXT_FILE")}
+	retryer := Retryer[io.ReadCloser]{}
+	reader, err := retryer.Send(func() (io.ReadCloser, error) {
+		return fs.GetObject(GetObjectInput{Path: path})
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +312,10 @@ func TestCopyObject(t *testing.T) {
 
 	srcpath := PathConfig{Path: os.Getenv("TEST_COPY_SRC")}
 	destpath := PathConfig{Path: os.Getenv("TEST_COPY_DEST")}
-	err = fs.CopyObject(srcpath, destpath)
+	err = fs.CopyObject(CopyObjectInput{
+		Src:  srcpath,
+		Dest: destpath,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +336,10 @@ func TestDeleteObject(t *testing.T) {
 	}
 
 	path := os.Getenv("TEST_COPY_DEST")
-	errs := fs.DeleteObjects(PathConfig{Paths: []string{path}})
+
+	errs := fs.DeleteObjects(DeleteObjectInput{
+		Path: PathConfig{Paths: []string{path}},
+	})
 	if len(errs) > 0 {
 		t.Fatal(errs[0])
 	}
@@ -329,7 +364,9 @@ func TestDeleteObjects(t *testing.T) {
 		os.Getenv("TEST_COPY_DEST"),
 	}}
 
-	errs := fs.DeleteObjects(path)
+	errs := fs.DeleteObjects(DeleteObjectInput{
+		Path: path,
+	})
 	if len(errs) > 0 {
 		t.Fatal(errs)
 	}
@@ -352,7 +389,10 @@ func TestWalk(t *testing.T) {
 	count := 0
 
 	startpath := os.Getenv("TEST_DIR")
-	err = fs.Walk(startpath, func(path string, file os.FileInfo) error {
+
+	wi := WalkInput{Path: PathConfig{Path: startpath}}
+
+	err = fs.Walk(wi, func(path string, file os.FileInfo) error {
 		fmt.Println(file.Name())
 		count++
 		return nil

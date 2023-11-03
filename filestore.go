@@ -54,24 +54,15 @@ type FileStoreResultObject struct {
 }
 
 type UploadConfig struct {
-	//PathInfo   models.ModelPathInfo
-	//DirPath    string
-	//FilePath   string
 	ObjectPath string
-	//ObjectName string
-	ChunkId int32
-	//FileId     uuid.UUID
-	UploadId string
-	Data     []byte
+	ChunkId    int32
+	UploadId   string
+	Data       []byte
 }
 
 type CompletedObjectUploadConfig struct {
-	UploadId string
-	//PathInfo       models.ModelPathInfo
-	//DirPath        string
-	//FilePath       string
-	ObjectPath string
-	//ObjectName     string
+	UploadId       string
+	ObjectPath     string
 	ChunkUploadIds []string
 }
 
@@ -82,8 +73,8 @@ type UploadResult struct {
 }
 
 type FileVisitFunction func(path string, file os.FileInfo) error
-type FileWalkCompleteFunction func() error
 type ProgressFunction func(pd ProgressData)
+
 type ProgressData struct {
 	Index int
 	Max   int
@@ -107,6 +98,22 @@ type ObjectSource struct {
 	reader        io.ReadCloser
 	data          []byte
 	filepath      PathConfig
+}
+
+type DeleteObjectInput struct {
+	Path     PathConfig
+	Progress ProgressFunction
+}
+
+type WalkInput struct {
+	Path     PathConfig
+	Progress ProgressFunction
+}
+
+type CopyObjectInput struct {
+	Src      PathConfig
+	Dest     PathConfig
+	Progress ProgressFunction
 }
 
 func (obs *ObjectSource) ReadCloser() (io.ReadCloser, error) {
@@ -142,7 +149,7 @@ type FileStore interface {
 	PutObject(PutObjectInput) (*FileOperationOutput, error)
 
 	//copy an object in a filestore
-	CopyObject(source PathConfig, dest PathConfig) error
+	CopyObject(input CopyObjectInput) error
 
 	//initialize a multipart upload sessions
 	InitializeObjectUpload(UploadConfig) (UploadResult, error)
@@ -154,11 +161,11 @@ type FileStore interface {
 	CompleteObjectUpload(CompletedObjectUploadConfig) error
 
 	//recursively deletes objects matching the path pattern
-	DeleteObjects(path PathConfig) []error
+	DeleteObjects(DeleteObjectInput) []error
 
 	//Walk a filestore starting at a given path
 	//FileVisitFunction will be called for each object identified in the path
-	Walk(string, FileVisitFunction) error
+	Walk(WalkInput, FileVisitFunction) error
 }
 
 func NewFileStore(fsconfig interface{}) (FileStore, error) {
@@ -178,7 +185,17 @@ func NewFileStore(fsconfig interface{}) (FileStore, error) {
 			delimiter = scType.Delimiter
 		}
 		loadOptions := []func(*config.LoadOptions) error{}
+		if scType.AwsOptions != nil {
+			loadOptions = append(loadOptions, scType.AwsOptions...)
+		}
 		loadOptions = append(loadOptions, config.WithRegion(scType.S3Region))
+		/////AWS RETRY OPTION
+		/*
+			loadOptions = append(loadOptions, config.WithRetryer(func() aws.Retryer {
+				return retry.AddWithMaxBackoffDelay(retry.NewStandard(), time.Second*5)
+			}))
+		*/
+		////
 		switch cred := scType.Credentials.(type) {
 		case S3FS_Static:
 			loadOptions = append(loadOptions, config.WithCredentialsProvider(

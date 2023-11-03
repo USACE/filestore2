@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	b64 "encoding/base64"
 	"errors"
+	"math"
+	"math/rand"
 	"net/url"
 	"os"
 	"strconv"
@@ -20,9 +22,29 @@ const (
 	maxExpiration       int    = 86400 * 30 //30 days
 )
 
+type Retryer[T any] struct {
+	MaxAttempts int
+	MaxBackoff  float64
+	R           float64
+}
+
+func (r Retryer[T]) Send(sendFunction func() (T, error)) (T, error) {
+	attempts := 0
+	for {
+		t, err := sendFunction()
+		if err == nil || attempts > r.MaxAttempts {
+			return t, err
+		}
+		b := rand.Float64()
+		secondsToSleep := math.Min(b*math.Pow(r.R, float64(attempts)), r.MaxBackoff)
+		time.Sleep(time.Second * time.Duration(secondsToSleep))
+		attempts++
+	}
+}
+
 func Count(fs FileStore, dirpath string) (int64, error) {
 	var count int64 = 0
-	err := fs.Walk(dirpath, func(path string, file os.FileInfo) error {
+	err := fs.Walk(WalkInput{Path: PathConfig{Path: dirpath}}, func(path string, file os.FileInfo) error {
 		count++
 		return nil
 	})

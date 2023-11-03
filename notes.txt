@@ -49,6 +49,14 @@ type CopyObjectInput struct{
 	pf ProgressFunction
 }
 
+@TODO 
+  - what to do with max value in progress function
+  - S3 delete progress function receives a fileInfo interface.  Filesystem delete gets a string value.....
+  - do we need a walk complete function? I dont think so.....
+  - add appropriate context actions.....
+  - add max for listing of 10k but allow override...
+  - message server
+
 
 zip and unzip?
 resume download?
@@ -57,4 +65,18 @@ resume download?
  - send chunks
    - file sysem byte slice
    - s3 ranged read
+------------
 
+ExponentialBackoff
+
+For an error that can be retried, the retry delay is calculated using truncated exponential backoff. The SDKs use truncated binary exponential backoff with jitter. The following algorithm shows how the amount of time to sleep, in seconds, is defined for a response for request i:
+
+
+seconds_to_sleep_i = min(b*r^i, MAX_BACKOFF)
+In the preceding algorithm, the following values apply:
+
+b = random number within the range of: 0 <= b <= 1
+
+r = 2
+
+MAX_BACKOFF = 20 seconds for most SDKs. See your specific SDK guide or source code for confirmation.

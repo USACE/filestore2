@@ -92,14 +92,14 @@ func (b *BlockFS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
 	}
 }
 
-func (b *BlockFS) CopyObject(sourcePath PathConfig, destPath PathConfig) error {
-	src, err := os.Open(sourcePath.Path)
+func (b *BlockFS) CopyObject(coi CopyObjectInput) error {
+	src, err := os.Open(coi.Src.Path)
 	if err != nil {
 		return err
 	}
 	defer src.Close()
 
-	dest, err := os.Create(destPath.Path)
+	dest, err := os.Create(coi.Dest.Path)
 	if err != nil {
 		return err
 	}
@@ -109,13 +109,20 @@ func (b *BlockFS) CopyObject(sourcePath PathConfig, destPath PathConfig) error {
 	return err
 }
 
-func (b *BlockFS) DeleteObjects(path PathConfig) []error {
+func (b *BlockFS) DeleteObjects(doi DeleteObjectInput) []error {
 	var err error
-	for _, p := range path.Paths {
+	for i, p := range doi.Path.Paths {
 		if isDir(p) {
 			err = os.RemoveAll(p)
 		} else {
 			err = os.Remove(p)
+		}
+		if doi.Progress != nil {
+			doi.Progress(ProgressData{
+				Index: i,
+				Max:   -1,
+				Value: p,
+			})
 		}
 	}
 	return []error{err}
@@ -155,8 +162,8 @@ func (b *BlockFS) CompleteObjectUpload(u CompletedObjectUploadConfig) error {
 	return nil
 }
 
-func (b *BlockFS) Walk(path string, vistorFunction FileVisitFunction) error {
-	err := filepath.Walk(path,
+func (b *BlockFS) Walk(input WalkInput, vistorFunction FileVisitFunction) error {
+	err := filepath.Walk(input.Path.Path,
 		func(path string, fileinfo os.FileInfo, err error) error {
 			if err != nil {
 				return err
