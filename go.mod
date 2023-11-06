@@ -1,4 +1,4 @@
-module github.com/usace/filestore2
+module github.com/usace/filestore/v3
 
 go 1.18
 
