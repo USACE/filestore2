@@ -6,10 +6,12 @@ import (
 	"crypto/sha256"
 	b64 "encoding/base64"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"time"
 )
@@ -23,11 +25,20 @@ const (
 )
 
 type Retryer[T any] struct {
+
+	//Max retry attempts
 	MaxAttempts int
-	MaxBackoff  float64
-	R           float64
+
+	//Max backoff in seconds
+	MaxBackoff float64
+
+	//base value for exponential backoff (usually 2)
+	//https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
+	R float64
 }
 
+// Send function for platform agnostic retry with exponential backoff and jitter
+// based on : https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
 func (r Retryer[T]) Send(sendFunction func() (T, error)) (T, error) {
 	attempts := 0
 	for {
@@ -35,19 +46,51 @@ func (r Retryer[T]) Send(sendFunction func() (T, error)) (T, error) {
 		if err == nil || attempts > r.MaxAttempts {
 			return t, err
 		}
-		b := rand.Float64()
+		b := rand.Float64() //@TODO should probably use crypto random.....
 		secondsToSleep := math.Min(b*math.Pow(r.R, float64(attempts)), r.MaxBackoff)
 		time.Sleep(time.Second * time.Duration(secondsToSleep))
 		attempts++
 	}
 }
 
-func Count(fs FileStore, dirpath string) (int64, error) {
+type CountInput struct {
+
+	//the filestore that will be walked
+	FileStore FileStore
+
+	//the starting directory
+	DirPath PathConfig
+
+	//an optional regular expression pattern for counting specific occurences of files
+	Pattern string
+}
+
+// Counts the number of files matching an optional pattern.
+// It accomplishes this by recursively walking the file system
+// starting at the dirpath
+func Count(ci CountInput) (int64, error) {
 	var count int64 = 0
-	err := fs.Walk(WalkInput{Path: PathConfig{Path: dirpath}}, func(path string, file os.FileInfo) error {
-		count++
-		return nil
-	})
+	var err error
+	if ci.Pattern == "" {
+		err = ci.FileStore.Walk(WalkInput{Path: ci.DirPath}, func(path string, file os.FileInfo) error {
+			count++
+			return nil
+		})
+
+	} else {
+		var r *regexp.Regexp
+		r, err := regexp.Compile("")
+		if err != nil {
+			return -1, fmt.Errorf("Failed to compile file search pattern: %s\n", err)
+		}
+		err = ci.FileStore.Walk(WalkInput{Path: ci.DirPath}, func(path string, file os.FileInfo) error {
+			if r.MatchString(path) {
+				count++
+			}
+			return nil
+		})
+	}
+
 	if err != nil {
 		return -1, err
 	}
@@ -55,20 +98,21 @@ func Count(fs FileStore, dirpath string) (int64, error) {
 }
 
 type PresignInputOptions struct {
-	Uri        string
+
+	//full uri, including query params, to sign or verify
+	Uri string
+
+	//HMAC 256 signing key
 	SigningKey []byte
+
+	//Expiration time in seconds
 	Expiration int
 }
 
-func sign(data []byte, signingKey []byte) ([]byte, error) {
-	mac := hmac.New(sha256.New, signingKey)
-	_, err := mac.Write(data)
-	if err != nil {
-		return nil, err
-	}
-	return mac.Sum(nil), nil
-}
-
+// Signs a uri object.  Object should be a full uri with query parameters.
+// method returns a new uri with the signature included.
+// Signing parameter names are borrowed from AWS and use their spec:
+// https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
 func PresignObject(options PresignInputOptions) (string, error) {
 	if options.Expiration > maxExpiration {
 		return "", errors.New("Expiration time too long")
@@ -88,6 +132,18 @@ func PresignObject(options PresignInputOptions) (string, error) {
 	uri.RawQuery = qp.Encode()
 	return uri.String(), nil
 }
+
+func sign(data []byte, signingKey []byte) ([]byte, error) {
+	mac := hmac.New(sha256.New, signingKey)
+	_, err := mac.Write(data)
+	if err != nil {
+		return nil, err
+	}
+	return mac.Sum(nil), nil
+}
+
+// verify a signed object.  Returns a boolean.  True if verified, false on any error
+// or validation failure
 func VerifySignedObject(options PresignInputOptions) bool {
 	uri, err := url.Parse(options.Uri)
 	if err != nil {

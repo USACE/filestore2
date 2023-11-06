@@ -71,8 +71,8 @@ func (b *BlockFS) DeleteObject(path string) error {
 */
 
 func (b *BlockFS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
-	data := poi.Source.data
-	path := poi.Source.filepath
+	data := poi.Source.Data
+	path := poi.Source.Filepath
 	if len(data) == 0 {
 		f := FileOperationOutput{}
 		err := os.MkdirAll(filepath.Dir(path.Path), os.ModePerm)
@@ -86,7 +86,7 @@ func (b *BlockFS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
 		_, err = f.Write(data)
 		md5 := getFileMd5(f)
 		output := &FileOperationOutput{
-			Md5: md5,
+			ETag: md5,
 		}
 		return output, err
 	}

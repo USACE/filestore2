@@ -228,7 +228,7 @@ func (s3fs *S3FS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
 			return nil, err
 		}
 		output := &FileOperationOutput{
-			Md5: *s3output.ETag,
+			ETag: *s3output.ETag,
 		}
 		return output, err
 	} else {
@@ -243,7 +243,7 @@ func (s3fs *S3FS) PutObject(poi PutObjectInput) (*FileOperationOutput, error) {
 			return nil, err
 		}
 		output := &FileOperationOutput{
-			Md5: *s3output.ETag,
+			ETag: *s3output.ETag,
 		}
 		return output, err
 	}

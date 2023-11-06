@@ -33,13 +33,19 @@ const (
 
 var chunkSize int64 = 10 * 1024 * 1024
 
+// Path config a PATH or array of PATHS
+// representing a resource.  Array of PATHS
+// is used to support multi-file resources
+// such as geospatial shape files
 type PathConfig struct {
 	Path  string
 	Paths []string
 }
 
 type FileOperationOutput struct {
-	Md5 string
+
+	//AWS Etag for S3 results.  MD5 hash for file system operations
+	ETag string
 }
 
 type FileStoreResultObject struct {
@@ -54,15 +60,29 @@ type FileStoreResultObject struct {
 }
 
 type UploadConfig struct {
+
+	//Path to the object being uploaded into
 	ObjectPath string
-	ChunkId    int32
-	UploadId   string
-	Data       []byte
+
+	//upload chunk number
+	ChunkId int32
+
+	//GUID for the file upload identifier
+	UploadId string
+
+	//chunk data
+	Data []byte
 }
 
 type CompletedObjectUploadConfig struct {
-	UploadId       string
-	ObjectPath     string
+
+	//GUID for the file upload identifier
+	UploadId string
+
+	//Path to the object being uploaded into
+	ObjectPath string
+
+	//ETags for uploaded parts
 	ChunkUploadIds []string
 }
 
@@ -82,7 +102,13 @@ type ProgressData struct {
 }
 
 type GetObjectInput struct {
-	Path  PathConfig
+
+	//Path to resource
+	Path PathConfig
+
+	//Downloads the specified range bytes of an object. Uses rfc9110 syntax
+	// https://www.rfc-editor.org/rfc/rfc9110.html#name-range
+	//Note: Does not support multiple ranges in a single request
 	Range string
 }
 
@@ -94,10 +120,33 @@ type PutObjectInput struct {
 }
 
 type ObjectSource struct {
+
+	//optional content length.  Will be determined automatically for byte slice sources (i.e. Data)
 	ContentLength int64
-	reader        io.ReadCloser
-	data          []byte
-	filepath      PathConfig
+
+	//One of the next three sources must be provided
+	//an existing io.ReadCloser
+	Reader io.ReadCloser
+
+	//a byte slice of data
+	Data []byte
+
+	//a file path to a resource
+	Filepath PathConfig
+}
+
+func (obs *ObjectSource) ReadCloser() (io.ReadCloser, error) {
+	if obs.Reader != nil {
+		return obs.Reader, nil
+	}
+	if obs.Filepath.Path != "" {
+		return os.Open(obs.Filepath.Path)
+	}
+	if obs.Data != nil {
+		obs.ContentLength = int64(len(obs.Data))
+		return io.NopCloser(bytes.NewReader(obs.Data)), nil
+	}
+	return nil, errors.New("Invalid ObjectSource configuration")
 }
 
 type DeleteObjectInput struct {
@@ -114,20 +163,6 @@ type CopyObjectInput struct {
 	Src      PathConfig
 	Dest     PathConfig
 	Progress ProgressFunction
-}
-
-func (obs *ObjectSource) ReadCloser() (io.ReadCloser, error) {
-	if obs.reader != nil {
-		return obs.reader, nil
-	}
-	if obs.filepath.Path != "" {
-		return os.Open(obs.filepath.Path)
-	}
-	if obs.data != nil {
-		obs.ContentLength = int64(len(obs.data))
-		return io.NopCloser(bytes.NewReader(obs.data)), nil
-	}
-	return nil, errors.New("Invalid ObjectSource configuration")
 }
 
 type FileStore interface {

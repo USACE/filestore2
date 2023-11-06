@@ -230,14 +230,14 @@ func TestPutObjectBytes(t *testing.T) {
 	}
 	path := PathConfig{Path: os.Getenv("TEST_TEXT_FILE")}
 	poi := PutObjectInput{
-		Source: ObjectSource{data: data},
+		Source: ObjectSource{Data: data},
 		Dest:   path,
 	}
 	out, err := fs.PutObject(poi)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(out.Md5)
+	fmt.Println(out.ETag)
 }
 
 func TestPutObjectReader(t *testing.T) {
@@ -259,14 +259,14 @@ func TestPutObjectReader(t *testing.T) {
 	}
 	path := PathConfig{Path: os.Getenv("TEST_PUT_DEST")}
 	poi := PutObjectInput{
-		Source: ObjectSource{reader: reader},
+		Source: ObjectSource{Reader: reader},
 		Dest:   path,
 	}
 	out, err := fs.PutObject(poi)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(out.Md5)
+	fmt.Println(out.ETag)
 }
 
 func TestPutObjectFile(t *testing.T) {
@@ -286,14 +286,14 @@ func TestPutObjectFile(t *testing.T) {
 
 	path := PathConfig{Path: os.Getenv("TEST_TEXT_FILE") + ".f.txt"}
 	poi := PutObjectInput{
-		Source: ObjectSource{filepath: filepath},
+		Source: ObjectSource{Filepath: filepath},
 		Dest:   path,
 	}
 	out, err := fs.PutObject(poi)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(out.Md5)
+	fmt.Println(out.ETag)
 }
 
 func TestCopyObject(t *testing.T) {
