@@ -355,7 +355,8 @@ func (s3fs *S3FS) flushDeletes(delBuffer []types.ObjectIdentifier) error {
 
 func (s3fs *S3FS) CopyObject(sourcePath PathConfig, destPath PathConfig) error {
 
-	info, err := s3fs.GetObjectInfo(sourcePath)
+	infoPath := strings.Replace(sourcePath.Path, s3fs.ResourceName(), "", 1)
+	info, err := s3fs.GetObjectInfo(PathConfig{Path: infoPath})
 	if err != nil {
 		return err
 	}
@@ -405,7 +406,7 @@ func (s3fs *S3FS) copyPartsTo(sourcePath PathConfig, destPath PathConfig, fileSi
 
 	var i int64
 	var partNumber int32 = 1
-	copySource := fmt.Sprintf("%s/%s", s3fs.config.S3Bucket, source)
+	//copySource := fmt.Sprintf("%s/%s", s3fs.config.S3Bucket, source)
 
 	parts := make([]types.CompletedPart, 0)
 	numUploads := fileSize / max_copy_chunk_size
@@ -415,7 +416,7 @@ func (s3fs *S3FS) copyPartsTo(sourcePath PathConfig, destPath PathConfig, fileSi
 		copyRange := buildCopySourceRange(i, fileSize)
 		partInput := s3.UploadPartCopyInput{
 			Bucket:          &s3fs.config.S3Bucket,
-			CopySource:      &copySource,
+			CopySource:      &source,
 			CopySourceRange: &copyRange,
 			Key:             &dest,
 			PartNumber:      partNumber,
@@ -510,7 +511,7 @@ func (s3fs *S3FS) WriteChunk(u UploadConfig) (UploadResult, error) {
 	}
 	output := UploadResult{
 		WriteSize: len(u.Data),
-		ID:        *result.ETag,
+		ID:        strings.ReplaceAll(*result.ETag, "\"", ""),
 	}
 	return output, nil
 }
@@ -520,8 +521,9 @@ func (s3fs *S3FS) CompleteObjectUpload(u CompletedObjectUploadConfig) error {
 	s3path = strings.TrimPrefix(s3path, "/")
 	cp := []types.CompletedPart{}
 	for i, cuId := range u.ChunkUploadIds {
+		etag := cuId
 		cp = append(cp, types.CompletedPart{
-			ETag:       &cuId,
+			ETag:       &etag,
 			PartNumber: int32(i + 1),
 		})
 	}
