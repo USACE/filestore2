@@ -95,7 +95,6 @@ type FileStore interface {
 	GetObject(PathConfig) (io.ReadCloser, error)
 	GetObjectInfo(PathConfig) (fs.FileInfo, error)
 	PutObject(PathConfig, []byte) (*FileOperationOutput, error)
-	//Writer(PathConfig) (io.Writer, error)
 	CopyObject(source PathConfig, dest PathConfig) error
 	ResourceName() string
 	Upload(reader io.Reader, key string) error

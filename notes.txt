@@ -29,8 +29,12 @@ v3------------------------
 	DeleteObjects(path PathConfig, pf ProgressFunction) error
 	Walk(string, FileVisitFunction) error
 
-        PutObject(input PutObjectInput) (*FileOperationOutput, error)
+    PutObject(input PutObjectInput) (*FileOperationOutput, error)
 	CopyObject(input CopyObjectInput) error
+
+	PresignGetObject(PathConfig,expiration int) (string, error)
+	PublicGetObject(PathConfig) (string, error)
+	GetSignedObject(SignedObjectConfig) (io.ReadCloser, error)
 
 
 type PutObjectInput struct{
@@ -39,11 +43,12 @@ type PutObjectInput struct{
 }
 
 type ObjectSource struct{
-	Reader io.Reader
-	Data *[]byte
-	Filepath PathConfig
+	reader io.Reader
+	data *[]byte
+	filepath PathConfig
 }
 
+//returns a reader to whatever ObjectSource is being used
 func (os *ObjectSource) Reader() error
 
 type CopyObjectInput struct{
